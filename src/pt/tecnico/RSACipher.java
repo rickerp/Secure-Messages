@@ -13,16 +13,14 @@ public class RSACipher {
     private static int DEC_BYTES = 117;
     private static int ENC_BYTES = 128;
 
-    public SealedObject encrypt(Serializable object, String keyPath, int keyType) {
+    public byte[] encrypt(byte[] bytes, String keyPath, int keyType) {
         try {
             Cipher cipher = Cipher.getInstance("RSA");
             Key key = getKey(keyPath, keyType);
 
             System.out.println("Encrypting...");
             cipher.init(Cipher.ENCRYPT_MODE, key);
-            SealedObject eObject = new SealedObject(object, cipher);
-
-            return eObject;
+            return cipher.doFinal(bytes);
         } catch (Exception e) {
             // Pokemon exception handling!
             e.printStackTrace();
@@ -30,15 +28,14 @@ public class RSACipher {
         return null;
     }
 
-    public Object decrypt(SealedObject eObject, String keyPath, int keyType) {
+    public byte[] decrypt(byte[] bytes, String keyPath, int keyType) {
         try {
             Cipher cipher = Cipher.getInstance("RSA");
             Key key = getKey(keyPath, keyType);
 
             System.out.println("Deciphering...");
             cipher.init(Cipher.DECRYPT_MODE, key);
-            Object object = (String) eObject.getObject(cipher);
-            return object;
+            return cipher.doFinal(bytes);
         } catch (Exception e) {
             // Pokemon exception handling!
             e.printStackTrace();

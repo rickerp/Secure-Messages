@@ -26,6 +26,18 @@ public class SecureClient {
 		final InetAddress serverAddress = InetAddress.getByName(serverHost);
 		final int serverPort = Integer.parseInt(args[1]);
 
+		// Message content
+		final String from = "Alice";
+		final String to = "Bob"
+		final String payload = "Hello." + System.lineSeparator() + "Do you want to meet tomorrow?";
+
+		// Digest payload
+		MessageDigest hash = MessageDigest.getInstance("SHA-256");
+		byte[] digest = hash.digest(payload.getBytes());
+		// Encrypt digest
+		RSACipher cipher = new RSACipher();
+		byte[] sign = cipher.encrypt(digest, "keys/alice.privkey", Cipher.PRIVATE_KEY);
+
 		// Create socket
 		DatagramSocket socket = new DatagramSocket();
 
@@ -33,39 +45,18 @@ public class SecureClient {
 		JsonObject requestJson = JsonParser.parseString​("{}").getAsJsonObject();
 		{
 			JsonObject infoJson = JsonParser.parseString​("{}").getAsJsonObject();
-			infoJson.addProperty("from", "Alice");
-			infoJson.addProperty("to", "Bob");
+			infoJson.addProperty("from", from);
+			infoJson.addProperty("to", to);
+			infoJson.addProperty("sign", sign);
 			requestJson.add("info", infoJson);
-
-			String bodyText = "Hello." + System.lineSeparator() + "Do you want to meet tomorrow?";
-			requestJson.addProperty("body", bodyText);
+			requestJson.addProperty("body", payload);
 		}
 		System.out.println("Request message: " + requestJson);
 		
+		// Send request		
 		byte[] clientData = requestJson.toString().getBytes();
-
-		// Digest
-		MessageDigest hash = MessageDigest.getInstance("SHA-256");
-		byte[] digest = hash.digest(clientData);
-		System.out.println(digest.length + " : " + digest);
-
-		// Encrypt
-		RSACipher cipher = new RSACipher();
-		SealedObject rsa_digest = cipher.encrypt(digest, "keys/alice.privkey", Cipher.PRIVATE_KEY);
-		System.out.println(rsa_digest);
-
-		// Put it all together
-		ByteArrayOutputStream baos = new ByteArrayOutputStream(5000);
-		ObjectOutputStream oos = new ObjectOutputStream(new BufferedOutputStream(baos));
-		oos.flush();
-		oos.writeObject(rsa_digest);
-		oos.flush();
-		byte[] encClientData = baos.toByteArray();
-		System.out.println(encClientData.length + " : " + encClientData);
-
-		// Send request
-		System.out.printf("%d bytes %n", encClientData.length);
-		DatagramPacket clientPacket = new DatagramPacket(encClientData, encClientData.length, serverAddress, serverPort);
+		System.out.printf("%d bytes %n", clientData.length);
+		DatagramPacket clientPacket = new DatagramPacket(clientData, clientData.length, serverAddress, serverPort);
 		socket.send(clientPacket);
 		System.out.printf("Request packet sent to %s:%d!%n", serverAddress, serverPort);
 		oos.close();

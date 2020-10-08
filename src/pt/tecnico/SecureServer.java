@@ -23,7 +23,7 @@ public class SecureServer {
 	/** Buffer size for receiving a UDP packet. */
 	private static final int BUFFER_SIZE = MAX_UDP_DATA_SIZE;
 
-	public static void main(String[] args) throws IOException {
+	public static void main(String[] args) throws IOException, Exception {
 		// Check arguments
 		if (args.length < 1) {
 			System.err.println("Argument(s) missing!");
@@ -75,8 +75,21 @@ public class SecureServer {
 				JsonObject infoJson = requestJson.getAsJsonObject("info");
 				from = infoJson.get("from").getAsString();
 				to = infoJson.get("to").getAsString();
+				sign = infoJson.get("sign").getAsString();
 				body = requestJson.get("body").getAsString();
 			}
+
+			// Verify integrity
+			MessageDigest hash = MessageDigest.getInstance("SHA-256");
+			byte[] digest = hash.digest(body.getBytes());
+			
+			RSACipher cipher = new RSACipher();
+			byte[] signRec = cipher.decrypt(digest, "keys/alice.pubkey", Cipher.PUBLIC_KEY);
+
+			if !Array.equals(sign, signRec) 
+				throw new Exception("Fuck you Trudy!");
+			
+
 			System.out.printf("Message from '%s':%n%s%n", from, body);
 
 			// Create response message
