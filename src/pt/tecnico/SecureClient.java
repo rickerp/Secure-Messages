@@ -30,7 +30,6 @@ public class SecureClient {
 		final String from = "Alice";
 		final String to = "Bob";
 		final String payload = "Hello." + System.lineSeparator() + "Do you want to meet tomorrow?";
-		final String sign;
 
 		// Digest payload
 		MessageDigest hash = MessageDigest.getInstance("SHA-256");
@@ -38,7 +37,7 @@ public class SecureClient {
 
 		// Encrypt digest
 		RSACipher cipher = new RSACipher();
-		sign = new String(cipher.encrypt(digest, "keys/alice.privkey", Cipher.PRIVATE_KEY));
+		byte[] sign = cipher.encrypt(digest, "keys/alice.privkey", Cipher.PRIVATE_KEY);
 
 		// Create socket
 		DatagramSocket socket = new DatagramSocket();
@@ -49,7 +48,7 @@ public class SecureClient {
 			JsonObject infoJson = JsonParser.parseString("{}").getAsJsonObject();
 			infoJson.addProperty("from", from);
 			infoJson.addProperty("to", to);
-			infoJson.addProperty("sign", sign);
+			infoJson.addProperty("sign", Base64.getEncoder().encodeToString(sign));
 			requestJson.add("info", infoJson);
 			requestJson.addProperty("body", payload);
 		}
@@ -88,7 +87,7 @@ public class SecureClient {
 		byte[] digest2 = hashRec.digest(bodyRec.getBytes());
 
 		// Decrypt Received signature
-		byte[] digestRec = cipher.decrypt(signRec.getBytes(), "keys/alice.pubkey", Cipher.PUBLIC_KEY);
+		byte[] digestRec = cipher.decrypt(Base64.getDecoder().decode(signRec), "keys/bob.pubkey", Cipher.PUBLIC_KEY);
 
 		// Verify Integrity
 		if (!Arrays.equals(digest2, digestRec)) {

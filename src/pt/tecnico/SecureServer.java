@@ -54,9 +54,10 @@ public class SecureServer {
 			System.out.println("Received request: " + clientText);
 
 			// Parse JSON and extract arguments
-			JsonObject requestJson = JsonParser.parseString("{}").getAsJsonObject();
+			JsonObject requestJson = JsonParser.parseString(clientText).getAsJsonObject();
 			String fromRec = null, toRec = null, signRec = null, bodyRec = null;
 			{
+				System.out.println(requestJson);
 				JsonObject infoJson = requestJson.getAsJsonObject("info");
 				System.out.println(infoJson == null);
 				fromRec = infoJson.get("from").getAsString();
@@ -72,7 +73,8 @@ public class SecureServer {
 
 			// Decrypt Received signature
 			RSACipher cipher = new RSACipher();
-			byte[] digestRec = cipher.decrypt(signRec.getBytes(), "keys/alice.pubkey", Cipher.PUBLIC_KEY);
+			System.out.println(Base64.getDecoder().decode(signRec).length + " : " + Base64.getDecoder().decode(signRec));
+			byte[] digestRec = cipher.decrypt(Base64.getDecoder().decode(signRec), "keys/alice.pubkey", Cipher.PUBLIC_KEY);
 
 			// Verify Integrity
 			if (!Arrays.equals(digest, digestRec)) {
@@ -83,14 +85,13 @@ public class SecureServer {
 			final String from = "Bob";
 			final String to = "Alice";
 			final String payload = "Yes. See you tomorrow!";
-			final String sign;
 
 			// Digest payload
 			MessageDigest hashRes = MessageDigest.getInstance("SHA-256");
 			byte[] digestRes = hashRes.digest(payload.getBytes());
 
 			// Encrypt digest
-			sign = new String(cipher.encrypt(digestRes, "keys/bob.privkey", Cipher.PRIVATE_KEY));
+			byte[] sign = cipher.encrypt(digestRes, "keys/bob.privkey", Cipher.PRIVATE_KEY);
 
 			// Create response message
 			JsonObject responseJson = JsonParser.parseString("{}").getAsJsonObject();
@@ -98,7 +99,7 @@ public class SecureServer {
 				JsonObject infoJson = JsonParser.parseString("{}").getAsJsonObject();
 				infoJson.addProperty("from", from);
 				infoJson.addProperty("to", to);
-				infoJson.addProperty("sign", sign);
+				infoJson.addProperty("sign", Base64.getEncoder().encodeToString(sign));
 				responseJson.add("info", infoJson);
 				responseJson.addProperty("body", payload);
 			}
