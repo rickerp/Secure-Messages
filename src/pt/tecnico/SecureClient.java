@@ -15,7 +15,7 @@ public class SecureClient {
 	/** Buffer size for receiving a UDP packet. */
 	private static final int BUFFER_SIZE = 65_507;
 
-	public static void main(String[] args) throws IOException, NoSuchAlgorithmException {
+	public static void main(String[] args) throws Exception {
 		// Check arguments
 		if (args.length < 2) {
 			System.err.println("Argument(s) missing!");
@@ -28,23 +28,25 @@ public class SecureClient {
 
 		// Message content
 		final String from = "Alice";
-		final String to = "Bob"
+		final String to = "Bob";
 		final String payload = "Hello." + System.lineSeparator() + "Do you want to meet tomorrow?";
+		final String sign;
 
 		// Digest payload
 		MessageDigest hash = MessageDigest.getInstance("SHA-256");
 		byte[] digest = hash.digest(payload.getBytes());
+
 		// Encrypt digest
 		RSACipher cipher = new RSACipher();
-		byte[] sign = cipher.encrypt(digest, "keys/alice.privkey", Cipher.PRIVATE_KEY);
+		sign = new String(cipher.encrypt(digest, "keys/alice.privkey", Cipher.PRIVATE_KEY));
 
 		// Create socket
 		DatagramSocket socket = new DatagramSocket();
 
         // Create request message
-		JsonObject requestJson = JsonParser.parseString​("{}").getAsJsonObject();
+		JsonObject requestJson = JsonParser.parseString("{}").getAsJsonObject();
 		{
-			JsonObject infoJson = JsonParser.parseString​("{}").getAsJsonObject();
+			JsonObject infoJson = JsonParser.parseString("{}").getAsJsonObject();
 			infoJson.addProperty("from", from);
 			infoJson.addProperty("to", to);
 			infoJson.addProperty("sign", sign);
@@ -59,7 +61,6 @@ public class SecureClient {
 		DatagramPacket clientPacket = new DatagramPacket(clientData, clientData.length, serverAddress, serverPort);
 		socket.send(clientPacket);
 		System.out.printf("Request packet sent to %s:%d!%n", serverAddress, serverPort);
-		oos.close();
 
 		// Receive response
 		byte[] serverData = new byte[BUFFER_SIZE];
@@ -74,15 +75,27 @@ public class SecureClient {
 		System.out.println("Received response: " + serverText);
 
 		// Parse JSON and extract arguments
-		JsonObject responseJson = JsonParser.parseString​(serverText).getAsJsonObject();
-		String from = null, to = null, body = null;
-		{
-			JsonObject infoJson = responseJson.getAsJsonObject("info");
-			from = infoJson.get("from").getAsString();
-			to = infoJson.get("to").getAsString();
-			body = responseJson.get("body").getAsString();
+		JsonObject responseJson = JsonParser.parseString(serverText).getAsJsonObject();
+
+		JsonObject infoJson = responseJson.getAsJsonObject("info");
+		String fromRec = infoJson.get("from").getAsString();
+		String toRec = infoJson.get("to").getAsString();
+		String signRec = infoJson.get("sign").getAsString();
+		String bodyRec = responseJson.get("body").getAsString();
+
+		// Digest body
+		MessageDigest hashRec = MessageDigest.getInstance("SHA-256");
+		byte[] digest2 = hashRec.digest(bodyRec.getBytes());
+
+		// Decrypt Received signature
+		byte[] digestRec = cipher.decrypt(signRec.getBytes(), "keys/alice.pubkey", Cipher.PUBLIC_KEY);
+
+		// Verify Integrity
+		if (!Arrays.equals(digest2, digestRec)) {
+			throw new Exception("Fuck you Trudy!");
 		}
-		System.out.printf("Message from '%s':%n%s%n", from, body);
+
+		System.out.printf("Message from '%s' to '%s':%n%s%n", fromRec, toRec, bodyRec);
 
 		// Close socket
 		socket.close();

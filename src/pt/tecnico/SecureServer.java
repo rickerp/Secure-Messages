@@ -1,14 +1,14 @@
 package pt.tecnico;
 
-import java.io.*;
 import java.net.*;
+import java.security.MessageDigest;
 import java.util.*;
+
 import com.google.gson.*;
 
 import javax.crypto.Cipher;
 import javax.crypto.SealedObject;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
+
 
 public class SecureServer {
 
@@ -23,11 +23,11 @@ public class SecureServer {
 	/** Buffer size for receiving a UDP packet. */
 	private static final int BUFFER_SIZE = MAX_UDP_DATA_SIZE;
 
-	public static void main(String[] args) throws IOException, Exception {
+	public static void main(String[] args) throws Exception {
 		// Check arguments
 		if (args.length < 1) {
 			System.err.println("Argument(s) missing!");
-			System.err.printf("Usage: java %s port%n", SecureServer.class.getName());
+			System.err.printf("Usage: java %s port%n", JsonServer.class.getName());
 			return;
 		}
 		final int port = Integer.parseInt(args[0]);
@@ -36,7 +36,7 @@ public class SecureServer {
 		DatagramSocket socket = new DatagramSocket(port);
 		System.out.printf("Server will receive packets on port %d %n", port);
 
-		// Wait for client packets 
+		// Wait for client packets
 		byte[] buf = new byte[BUFFER_SIZE];
 		while (true) {
 			// Receive packet
@@ -49,65 +49,65 @@ public class SecureServer {
 			System.out.printf("Received request packet from %s:%d!%n", clientAddress, clientPort);
 			System.out.printf("%d bytes %n", clientLength);
 
-			ByteArrayInputStream bais = new ByteArrayInputStream(buf);
-			ObjectInputStream ois = new ObjectInputStream(new BufferedInputStream(bais));
-			SealedObject encData = null;
-			try {
-				encData = (SealedObject) ois.readObject();
-			} catch (Exception e) {
-				System.out.println("DEU MERDA!!!");
-			}
-			ois.close();
-			
-			// Decrypt hash from SealedObject
-			RSACipher cipher = new RSACipher();
-			byte[] digest = (byte[]) cipher.decrypt(encData, "keys/alice.pubkey", Cipher.PUBLIC_KEY);
-			System.out.println(digest.length + " : " + digest);
-
 			// Convert request to string
-			String clientText = null; 
+			String clientText = new String(clientData, 0, clientLength);
 			System.out.println("Received request: " + clientText);
 
 			// Parse JSON and extract arguments
-			JsonObject requestJson = JsonParser.parseString​(clientText).getAsJsonObject();
-			String from = null, to = null, body = null;
+			JsonObject requestJson = JsonParser.parseString("{}").getAsJsonObject();
+			String fromRec = null, toRec = null, signRec = null, bodyRec = null;
 			{
 				JsonObject infoJson = requestJson.getAsJsonObject("info");
-				from = infoJson.get("from").getAsString();
-				to = infoJson.get("to").getAsString();
-				sign = infoJson.get("sign").getAsString();
-				body = requestJson.get("body").getAsString();
+				System.out.println(infoJson == null);
+				fromRec = infoJson.get("from").getAsString();
+				toRec = infoJson.get("to").getAsString();
+				signRec = infoJson.get("sign").getAsString();
+				bodyRec = requestJson.get("body").getAsString();
+			}
+			System.out.printf("Message from '%s' to '%s':%n%s%n", fromRec, toRec, bodyRec);
+
+			// Digest body
+			MessageDigest hash = MessageDigest.getInstance("SHA-256");
+			byte[] digest = hash.digest(bodyRec.getBytes());
+
+			// Decrypt Received signature
+			RSACipher cipher = new RSACipher();
+			byte[] digestRec = cipher.decrypt(signRec.getBytes(), "keys/alice.pubkey", Cipher.PUBLIC_KEY);
+
+			// Verify Integrity
+			if (!Arrays.equals(digest, digestRec)) {
+				throw new Exception("Fuck you Trudy!");
 			}
 
-			// Verify integrity
-			MessageDigest hash = MessageDigest.getInstance("SHA-256");
-			byte[] digest = hash.digest(body.getBytes());
-			
-			RSACipher cipher = new RSACipher();
-			byte[] signRec = cipher.decrypt(digest, "keys/alice.pubkey", Cipher.PUBLIC_KEY);
+			// Message content
+			final String from = "Bob";
+			final String to = "Alice";
+			final String payload = "Yes. See you tomorrow!";
+			final String sign;
 
-			if !Array.equals(sign, signRec) 
-				throw new Exception("Fuck you Trudy!");
-			
+			// Digest payload
+			MessageDigest hashRes = MessageDigest.getInstance("SHA-256");
+			byte[] digestRes = hashRes.digest(payload.getBytes());
 
-			System.out.printf("Message from '%s':%n%s%n", from, body);
+			// Encrypt digest
+			sign = new String(cipher.encrypt(digestRes, "keys/bob.privkey", Cipher.PRIVATE_KEY));
 
 			// Create response message
-			JsonObject responseJson = JsonParser.parseString​("{}").getAsJsonObject();
+			JsonObject responseJson = JsonParser.parseString("{}").getAsJsonObject();
 			{
-				JsonObject infoJson = JsonParser.parseString​("{}").getAsJsonObject();
-				infoJson.addProperty("from", "Bob");
-				infoJson.addProperty("to", "Alice");
+				JsonObject infoJson = JsonParser.parseString("{}").getAsJsonObject();
+				infoJson.addProperty("from", from);
+				infoJson.addProperty("to", to);
+				infoJson.addProperty("sign", sign);
 				responseJson.add("info", infoJson);
-
-				String bodyText = "Yes. See you tomorrow!";
-				responseJson.addProperty("body", bodyText);
+				responseJson.addProperty("body", payload);
 			}
 			System.out.println("Response message: " + responseJson);
 
 			// Send response
 			byte[] serverData = responseJson.toString().getBytes();
 			System.out.printf("%d bytes %n", serverData.length);
+
 			DatagramPacket serverPacket = new DatagramPacket(serverData, serverData.length, clientPacket.getAddress(), clientPacket.getPort());
 			socket.send(serverPacket);
 			System.out.printf("Response packet sent to %s:%d!%n", clientPacket.getAddress(), clientPacket.getPort());
