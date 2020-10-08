@@ -3,17 +3,19 @@ package pt.tecnico;
 import java.io.*;
 import java.net.*;
 import java.util.*;
-import javax.crypto.Cipher;
-import java.nio.charset.StandardCharsets;
 import com.google.gson.*;
 
+import javax.crypto.Cipher;
+import javax.crypto.SealedObject;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 
 public class SecureClient {
 
 	/** Buffer size for receiving a UDP packet. */
 	private static final int BUFFER_SIZE = 65_507;
 
-	public static void main(String[] args) throws IOException {
+	public static void main(String[] args) throws IOException, NoSuchAlgorithmException {
 		// Check arguments
 		if (args.length < 2) {
 			System.err.println("Argument(s) missing!");
@@ -39,33 +41,34 @@ public class SecureClient {
 			requestJson.addProperty("body", bodyText);
 		}
 		System.out.println("Request message: " + requestJson);
-
-		// Secure message
-		System.out.println(" ");
-		System.out.println(" ");
-
-		String s = "Olá eu sou um conas!";
-		System.out.println(s);
-		RSACipher cipher = new RSACipher();
 		
-		System.out.println(s.getBytes().length);
-		byte[] enc_s = cipher.encrypt(s.getBytes(), "keys/alice.privkey", Cipher.PRIVATE_KEY);
-		System.out.println(enc_s.length);
-		byte[] dec_s = cipher.decrypt(enc_s, "keys/alice.pubkey", Cipher.PUBLIC_KEY);
-		System.out.println(dec_s.length);
-		System.out.println(dec_s[1]);
-		String r = new String(dec_s, StandardCharsets.UTF_8);
-		System.out.println("OLA:" + r + "CONA");
+		byte[] clientData = requestJson.toString().getBytes();
 
-		System.out.println(" ");
-		System.out.println(" ");
+		// Digest
+		MessageDigest hash = MessageDigest.getInstance("SHA-256");
+		byte[] digest = hash.digest(clientData);
+		System.out.println(digest.length + " : " + digest);
+
+		// Encrypt
+		RSACipher cipher = new RSACipher();
+		SealedObject rsa_digest = cipher.encrypt(digest, "keys/alice.privkey", Cipher.PRIVATE_KEY);
+		System.out.println(rsa_digest);
+
+		// Put it all together
+		ByteArrayOutputStream baos = new ByteArrayOutputStream(5000);
+		ObjectOutputStream oos = new ObjectOutputStream(new BufferedOutputStream(baos));
+		oos.flush();
+		oos.writeObject(rsa_digest);
+		oos.flush();
+		byte[] encClientData = baos.toByteArray();
+		System.out.println(encClientData.length + " : " + encClientData);
 
 		// Send request
-		byte[] clientData = requestJson.toString().getBytes();
-		System.out.printf("%d bytes %n", clientData.length);
-		DatagramPacket clientPacket = new DatagramPacket(clientData, clientData.length, serverAddress, serverPort);
+		System.out.printf("%d bytes %n", encClientData.length);
+		DatagramPacket clientPacket = new DatagramPacket(encClientData, encClientData.length, serverAddress, serverPort);
 		socket.send(clientPacket);
 		System.out.printf("Request packet sent to %s:%d!%n", serverAddress, serverPort);
+		oos.close();
 
 		// Receive response
 		byte[] serverData = new byte[BUFFER_SIZE];

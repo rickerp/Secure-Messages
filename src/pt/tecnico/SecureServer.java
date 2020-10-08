@@ -3,9 +3,12 @@ package pt.tecnico;
 import java.io.*;
 import java.net.*;
 import java.util.*;
-
 import com.google.gson.*;
 
+import javax.crypto.Cipher;
+import javax.crypto.SealedObject;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 
 public class SecureServer {
 
@@ -46,8 +49,23 @@ public class SecureServer {
 			System.out.printf("Received request packet from %s:%d!%n", clientAddress, clientPort);
 			System.out.printf("%d bytes %n", clientLength);
 
+			ByteArrayInputStream bais = new ByteArrayInputStream(buf);
+			ObjectInputStream ois = new ObjectInputStream(new BufferedInputStream(bais));
+			SealedObject encData = null;
+			try {
+				encData = (SealedObject) ois.readObject();
+			} catch (Exception e) {
+				System.out.println("DEU MERDA!!!");
+			}
+			ois.close();
+			
+			// Decrypt hash from SealedObject
+			RSACipher cipher = new RSACipher();
+			byte[] digest = (byte[]) cipher.decrypt(encData, "keys/alice.pubkey", Cipher.PUBLIC_KEY);
+			System.out.println(digest.length + " : " + digest);
+
 			// Convert request to string
-			String clientText = new String(clientData, 0, clientLength);
+			String clientText = null; 
 			System.out.println("Received request: " + clientText);
 
 			// Parse JSON and extract arguments
