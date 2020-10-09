@@ -1,14 +1,15 @@
 package pt.tecnico;
 
-import java.io.*;
 import java.net.*;
+import java.security.Timestamp;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.*;
 import com.google.gson.*;
 
 import javax.crypto.Cipher;
-import javax.crypto.SealedObject;
 import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 
 public class SecureClient {
 
@@ -30,6 +31,7 @@ public class SecureClient {
 		final String from = "Alice";
 		final String to = "Bob";
 		final String payload = "Hello." + System.lineSeparator() + "Do you want to meet tomorrow?";
+		final String ts = Instant.now().toEpochMilli() + "";
 
 		// Digest payload
 		MessageDigest hash = MessageDigest.getInstance("SHA-256");
@@ -38,6 +40,10 @@ public class SecureClient {
 		// Encrypt digest
 		RSACipher cipher = new RSACipher();
 		byte[] sign = cipher.encrypt(digest, "keys/alice.privkey", Cipher.PRIVATE_KEY);
+
+		// Digest and encrypt timestamp
+		byte[] digestTS = hash.digest(ts.getBytes());
+		byte[] signTS = cipher.encrypt(digestTS, "keys/alice.privkey", Cipher.PRIVATE_KEY);
 
 		// Create socket
 		DatagramSocket socket = new DatagramSocket();
@@ -49,6 +55,8 @@ public class SecureClient {
 			infoJson.addProperty("from", from);
 			infoJson.addProperty("to", to);
 			infoJson.addProperty("sign", Base64.getEncoder().encodeToString(sign));
+			infoJson.addProperty("ts", ts);
+			infoJson.addProperty("signTS", Base64.getEncoder().encodeToString(signTS));
 			requestJson.add("info", infoJson);
 			requestJson.addProperty("body", payload);
 		}
@@ -80,18 +88,41 @@ public class SecureClient {
 		String fromRec = infoJson.get("from").getAsString();
 		String toRec = infoJson.get("to").getAsString();
 		String signRec = infoJson.get("sign").getAsString();
+		String tsRec = infoJson.get("ts").getAsString();
+		String signTSRec = infoJson.get("signTS").getAsString();
 		String bodyRec = responseJson.get("body").getAsString();
 
+		// Digest and decrypt timestamp
+		byte[] digestTS2 = hash.digest(tsRec.getBytes());
+		byte[] digestTSRec = cipher.decrypt(
+				Base64.getDecoder().decode(signTSRec),
+				"keys/bob.pubkey",
+				Cipher.PUBLIC_KEY
+		);
+
+		// Verify TS Integrity
+		if (!Arrays.equals(digestTS2, digestTSRec)) {
+			throw new Exception("Jesus Trudy get a life!");
+		}
+
+		// Verify Freshness
+		if (Instant.now().toEpochMilli() - Long.parseLong(tsRec) > 150) {
+			throw new Exception("Not Fresh! Replay attack from Trudy!");
+		}
+
 		// Digest body
-		MessageDigest hashRec = MessageDigest.getInstance("SHA-256");
-		byte[] digest2 = hashRec.digest(bodyRec.getBytes());
+		byte[] digest2 = hash.digest(bodyRec.getBytes());
 
 		// Decrypt Received signature
-		byte[] digestRec = cipher.decrypt(Base64.getDecoder().decode(signRec), "keys/bob.pubkey", Cipher.PUBLIC_KEY);
+		byte[] digestRec = cipher.decrypt(
+				Base64.getDecoder().decode(signRec),
+				"keys/bob.pubkey",
+				Cipher.PUBLIC_KEY
+		);
 
 		// Verify Integrity
 		if (!Arrays.equals(digest2, digestRec)) {
-			throw new Exception("Fuck you Trudy!");
+			throw new Exception("Jesus Trudy get a life!");
 		}
 
 		System.out.printf("Message from '%s' to '%s':%n%s%n", fromRec, toRec, bodyRec);

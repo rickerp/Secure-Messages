@@ -2,14 +2,16 @@ package pt.tecnico;
 
 import java.net.*;
 import java.security.MessageDigest;
+import java.time.Instant;
 import java.util.*;
 
 import com.google.gson.*;
 
 import javax.crypto.Cipher;
-import javax.crypto.SealedObject;
 
-
+/**
+ * Provides Integrity and Freshness protection
+ */
 public class SecureServer {
 
 	/**
@@ -51,40 +53,66 @@ public class SecureServer {
 
 			// Convert request to string
 			String clientText = new String(clientData, 0, clientLength);
-			System.out.println("Received request: " + clientText);
+			//System.out.println("Received request: " + clientText);
 
 			// Parse JSON and extract arguments
 			JsonObject requestJson = JsonParser.parseString(clientText).getAsJsonObject();
-			String fromRec = null, toRec = null, signRec = null, bodyRec = null;
+			String fromRec = null, toRec = null, signRec = null, bodyRec = null, tsRec = null, signTSRec = null;
 			{
 				System.out.println(requestJson);
 				JsonObject infoJson = requestJson.getAsJsonObject("info");
-				System.out.println(infoJson == null);
 				fromRec = infoJson.get("from").getAsString();
 				toRec = infoJson.get("to").getAsString();
 				signRec = infoJson.get("sign").getAsString();
+				tsRec = infoJson.get("ts").getAsString();
+				signTSRec = infoJson.get("signTS").getAsString();
 				bodyRec = requestJson.get("body").getAsString();
 			}
 			System.out.printf("Message from '%s' to '%s':%n%s%n", fromRec, toRec, bodyRec);
 
-			// Digest body
+			// Digest and decrypt timestamp
 			MessageDigest hash = MessageDigest.getInstance("SHA-256");
+			byte[] digestTS = hash.digest(tsRec.getBytes());
+
+			RSACipher cipher = new RSACipher();
+			byte[] digestTSRec = cipher.decrypt(
+					Base64.getDecoder().decode(signTSRec),
+					"keys/alice.pubkey",
+					Cipher.PUBLIC_KEY
+			);
+
+			// Verify TS Integrity
+			if (!Arrays.equals(digestTS, digestTSRec)) {
+				throw new Exception("Jesus Trudy get a life!");
+			}
+
+			// Verify Freshness
+			long timeTaken = Instant.now().toEpochMilli() - Long.parseLong(tsRec);
+			System.out.println("Time taken: " + timeTaken);
+			if (timeTaken > 1000) {
+				throw new Exception("Not Fresh! Replay attack from Trudy!");
+			}
+
+			// Digest body
 			byte[] digest = hash.digest(bodyRec.getBytes());
 
-			// Decrypt Received signature
-			RSACipher cipher = new RSACipher();
-			System.out.println(Base64.getDecoder().decode(signRec).length + " : " + Base64.getDecoder().decode(signRec));
-			byte[] digestRec = cipher.decrypt(Base64.getDecoder().decode(signRec), "keys/alice.pubkey", Cipher.PUBLIC_KEY);
+			// Decrypt received signature
+			byte[] digestRec = cipher.decrypt(
+					Base64.getDecoder().decode(signRec),
+					"keys/alice.pubkey",
+					Cipher.PUBLIC_KEY
+			);
 
 			// Verify Integrity
 			if (!Arrays.equals(digest, digestRec)) {
-				throw new Exception("Fuck you Trudy!");
+				throw new Exception("Jesus Trudy get a life!");
 			}
 
 			// Message content
 			final String from = "Bob";
 			final String to = "Alice";
 			final String payload = "Yes. See you tomorrow!";
+			final String ts = Instant.now().toEpochMilli() + "";
 
 			// Digest payload
 			MessageDigest hashRes = MessageDigest.getInstance("SHA-256");
@@ -93,6 +121,10 @@ public class SecureServer {
 			// Encrypt digest
 			byte[] sign = cipher.encrypt(digestRes, "keys/bob.privkey", Cipher.PRIVATE_KEY);
 
+			// Digest and encrypt timestamp
+			byte[] digestTSRes = hash.digest(ts.getBytes());
+			byte[] signTS = cipher.encrypt(digestTSRes, "keys/bob.privkey", Cipher.PRIVATE_KEY);
+
 			// Create response message
 			JsonObject responseJson = JsonParser.parseString("{}").getAsJsonObject();
 			{
@@ -100,6 +132,8 @@ public class SecureServer {
 				infoJson.addProperty("from", from);
 				infoJson.addProperty("to", to);
 				infoJson.addProperty("sign", Base64.getEncoder().encodeToString(sign));
+				infoJson.addProperty("ts", ts);
+				infoJson.addProperty("signTS", Base64.getEncoder().encodeToString(signTS));
 				responseJson.add("info", infoJson);
 				responseJson.addProperty("body", payload);
 			}
