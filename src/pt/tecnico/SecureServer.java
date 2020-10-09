@@ -59,7 +59,7 @@ public class SecureServer {
 			JsonObject requestJson = JsonParser.parseString(clientText).getAsJsonObject();
 			String fromRec = null, toRec = null, signRec = null, bodyRec = null, tsRec = null, signTSRec = null;
 			{
-				System.out.println(requestJson);
+				//System.out.println(requestJson);
 				JsonObject infoJson = requestJson.getAsJsonObject("info");
 				fromRec = infoJson.get("from").getAsString();
 				toRec = infoJson.get("to").getAsString();
@@ -68,6 +68,13 @@ public class SecureServer {
 				signTSRec = infoJson.get("signTS").getAsString();
 				bodyRec = requestJson.get("body").getAsString();
 			}
+
+			// Modify Body to simulate attack on data
+			//bodyRec = bodyRec + " (Pls say no)";
+
+			// Modify Timestamp to simulate attack on timestamp
+			//tsRec = (Long.parseLong(tsRec) + 1) + "";
+
 			System.out.printf("Message from '%s' to '%s':%n%s%n", fromRec, toRec, bodyRec);
 
 			// Digest and decrypt timestamp
@@ -83,7 +90,7 @@ public class SecureServer {
 
 			// Verify TS Integrity
 			if (!Arrays.equals(digestTS, digestTSRec)) {
-				throw new Exception("Jesus Trudy get a life!");
+				throw new Exception("Jesus Trudy get a life! (Timestamp Changed)");
 			}
 
 			// Verify Freshness
@@ -105,7 +112,7 @@ public class SecureServer {
 
 			// Verify Integrity
 			if (!Arrays.equals(digest, digestRec)) {
-				throw new Exception("Jesus Trudy get a life!");
+				throw new Exception("Jesus Trudy get a life! (Message changed)");
 			}
 
 			// Message content

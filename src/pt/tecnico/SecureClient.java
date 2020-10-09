@@ -10,6 +10,7 @@ import com.google.gson.*;
 
 import javax.crypto.Cipher;
 import java.security.MessageDigest;
+import java.util.concurrent.TimeUnit;
 
 public class SecureClient {
 
@@ -60,7 +61,10 @@ public class SecureClient {
 			requestJson.add("info", infoJson);
 			requestJson.addProperty("body", payload);
 		}
-		System.out.println("Request message: " + requestJson);
+		//System.out.println("Request message: " + requestJson);
+
+		// Test replay attack
+		//TimeUnit.SECONDS.sleep(1);
 		
 		// Send request		
 		byte[] clientData = requestJson.toString().getBytes();
